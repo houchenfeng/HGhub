@@ -1,0 +1,48 @@
+name: Build PR46 Android
+on:
+  push:
+    branches: [deploy/pr46-android]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: pr46-android
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri android init --ci
+      - run: pnpm tauri android build --apk --target aarch64
+      - name: Collect unsigned release APK
+        run: |
+          mkdir -p artifacts
+          find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' -exec cp {} artifacts/HGhub_PR46_arm64_unsigned.apk \;
+          test -s artifacts/HGhub_PR46_arm64_unsigned.apk
+          git rev-parse HEAD > artifacts/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HGhub-PR46-Android
+          path: artifacts/*
+          if-no-files-found: error
